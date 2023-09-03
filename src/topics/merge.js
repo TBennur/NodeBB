@@ -8,81 +8,73 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
-const plugins_1 = __importDefault(require("../plugins"));
-const posts_1 = __importDefault(require("../posts"));
+const plugins = require("../plugins");
+const posts = require("../posts");
 module.exports = function (Topics) {
-    Topics.merge = function (tids, uid, options) {
-        return __awaiter(this, void 0, void 0, function* () {
-            options = options || {};
-            const topicsData = yield Topics.getTopicsFields(tids, ['scheduled']);
-            if (topicsData.some(t => t.scheduled)) {
-                throw new Error('[[error:cant-merge-scheduled]]');
+    Topics.merge = (tids, uid, options) => __awaiter(this, void 0, void 0, function* () {
+        options = options || {};
+        const topicsData = yield Topics.getTopicsFields(tids, ['scheduled']);
+        if (topicsData.some(t => t.scheduled)) {
+            throw new Error('[[error:cant-merge-scheduled]]');
+        }
+        const oldestTid = Topics.findOldestTopic(tids);
+        let mergeIntoTid = oldestTid;
+        if (options.mainTid) {
+            mergeIntoTid = options.mainTid;
+        }
+        else if (options.newTopicTitle) {
+            mergeIntoTid = yield Topics.createNewTopic(options.newTopicTitle, oldestTid);
+        }
+        const otherTids = tids.sort((a, b) => a - b)
+            .filter(tid => tid && tid !== mergeIntoTid);
+        for (const tid of otherTids) {
+            /* eslint-disable no-await-in-loop */
+            const pids = yield Topics.getPids(tid);
+            for (const pid of pids) {
+                yield Topics.movePostToTopic(uid, pid, mergeIntoTid);
             }
-            const oldestTid = findOldestTopic(tids);
-            let mergeIntoTid = oldestTid;
-            if (options.mainTid) {
-                mergeIntoTid = options.mainTid;
-            }
-            else if (options.newTopicTitle) {
-                mergeIntoTid = yield createNewTopic(options.newTopicTitle, oldestTid);
-            }
-            const otherTids = tids.sort((a, b) => a - b)
-                .filter(tid => tid && parseInt(tid, 10) !== parseInt(mergeIntoTid, 10));
-            for (const tid of otherTids) {
-                /* eslint-disable no-await-in-loop */
-                const pids = yield Topics.getPids(tid);
-                for (const pid of pids) {
-                    yield Topics.movePostToTopic(uid, pid, mergeIntoTid);
-                }
-                yield Topics.setTopicField(tid, 'mainPid', 0);
-                yield Topics.delete(tid, uid);
-                yield Topics.setTopicFields(tid, {
-                    mergeIntoTid: mergeIntoTid,
-                    mergerUid: uid,
-                    mergedTimestamp: Date.now(),
-                });
-            }
-            yield Promise.all([
-                posts_1.default.updateQueuedPostsTopic(mergeIntoTid, otherTids),
-                updateViewCount(mergeIntoTid, tids),
-            ]);
-            plugins_1.default.hooks.fire('action:topic.merge', {
-                uid: uid,
-                tids: tids,
+            yield Topics.setTopicField(tid, 'mainPid', 0);
+            yield Topics.delete(tid, uid);
+            yield Topics.setTopicFields(tid, {
                 mergeIntoTid: mergeIntoTid,
-                otherTids: otherTids,
+                mergerUid: uid,
+                mergedTimestamp: Date.now(),
             });
-            return mergeIntoTid;
+        }
+        yield Promise.all([
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+            posts.updateQueuedPostsTopic(mergeIntoTid, otherTids),
+            Topics.updateViewCount(mergeIntoTid, tids),
+        ]);
+        yield plugins.hooks.fire('action:topic.merge', {
+            uid: uid,
+            tids: tids,
+            mergeIntoTid: mergeIntoTid,
+            otherTids: otherTids,
         });
+        return mergeIntoTid;
+    });
+    Topics.createNewTopic = (title, oldestTid) => __awaiter(this, void 0, void 0, function* () {
+        const topicData = yield Topics.getTopicFields(oldestTid, ['uid', 'cid']);
+        const params = {
+            uid: topicData.uid,
+            cid: topicData.cid,
+            title: title,
+        };
+        const result = yield plugins.hooks.fire('filter:topic.mergeCreateNewTopic', {
+            oldestTid: oldestTid,
+            params: params,
+        });
+        const tid = yield Topics.create(result.params);
+        return tid;
+    });
+    Topics.updateViewCount = (mergeIntoTid, tids) => __awaiter(this, void 0, void 0, function* () {
+        const topicData = yield Topics.getTopicsFields(tids, ['viewcount']);
+        const totalViewCount = topicData.reduce((count, topic) => count + parseInt(topic.viewcount, 10), 0);
+        yield Topics.setTopicField(mergeIntoTid, 'viewcount', totalViewCount);
+    });
+    Topics.findOldestTopic = function (tids) {
+        return Math.min.apply(0, tids);
     };
-    function createNewTopic(title, oldestTid) {
-        return __awaiter(this, void 0, void 0, function* () {
-            const topicData = yield Topics.getTopicFields(oldestTid, ['uid', 'cid']);
-            const params = {
-                uid: topicData.uid,
-                cid: topicData.cid,
-                title: title,
-            };
-            const result = yield plugins_1.default.hooks.fire('filter:topic.mergeCreateNewTopic', {
-                oldestTid: oldestTid,
-                params: params,
-            });
-            const tid = yield Topics.create(result.params);
-            return tid;
-        });
-    }
-    function updateViewCount(mergeIntoTid, tids) {
-        return __awaiter(this, void 0, void 0, function* () {
-            const topicData = yield Topics.getTopicsFields(tids, ['viewcount']);
-            const totalViewCount = topicData.reduce((count, topic) => count + parseInt(topic.viewcount, 10), 0);
-            yield Topics.setTopicField(mergeIntoTid, 'viewcount', totalViewCount);
-        });
-    }
-    function findOldestTopic(tids) {
-        return Math.min.apply(null, tids);
-    }
 };
