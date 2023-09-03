@@ -1,9 +1,22 @@
-'use strict';
+import plugins from '../plugins';
+import posts from '../posts';
 
-const plugins = require('../plugins');
-const posts = require('../posts');
+interface TopicsType {
+    merge : (tids : any, uid : number, options : any) => Promise<any>;
+    getTopicsFields : (tids : number[], fields : any) => Promise<any>;
+    getTopicFields : (tid : number, fields : any) => Promise<any>;
+    createNewTopic : (title : string, oldestTid : number) => Promise<any>;
+    getPids : (tid : number) => Promise<any>;
+    movePostToTopic : (uid : number, pid : number, mergeIntoTid : number) => Promise<any>;
+    setTopicField : (tid : number, field : any, value : any) => void;
+    delete : (tid : number, uid : any) => void;
+    setTopicFields : (tid : number, data : any) => void;
+    updateViewCount : (mergeIntoTid : number, tids : number[]) => Promise<void>;
+    findOldestTopic : (tids : number[]) => any;
+    create : (data : any) => Promise<any>;
+}
 
-module.exports = function (Topics) {
+module.exports = function (Topics : TopicsType) {
     Topics.merge = async function (tids, uid, options) {
         options = options || {};
 
