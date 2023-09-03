@@ -78,6 +78,7 @@ module.exports = function (Topics : TopicsType) {
         }
 
         await Promise.all([
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-call
             posts.updateQueuedPostsTopic(mergeIntoTid, otherTids),
             Topics.updateViewCount(mergeIntoTid, tids),
         ]);
